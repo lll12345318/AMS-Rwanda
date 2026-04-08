@@ -1,0 +1,5 @@
+{
+  "name": "AMS - Agri-modernization System",
+  "description": "Satellite-based crop monitoring system for Rwanda with AI-driven NDVI analysis and Kinyarwanda alerts.",
+  "requestFramePermissions": []
+}
