@@ -10,34 +10,37 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Infrastructure Setup
+# Lazy Initialization for Supabase (Production Fix)
 _supabase_client = None
 def get_supabase():
     global _supabase_client
     if _supabase_client is None:
-        url = os.getenv("SUPABASE_URL")
-        key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+        url = os.environ.get("SUPABASE_URL")
+        # Use SERVICE_KEY to bypass RLS for AMS logic
+        key = os.environ.get("SUPABASE_SERVICE_KEY")
         if not url or not key:
-            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY/ANON_KEY are required environment variables.")
+            # Prevents crash during build if env vars are missing
+            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY are required.")
         _supabase_client = create_client(url, key)
     return _supabase_client
 
+# Lazy Initialization for Gemini
 _gemini_model = None
 def get_gemini_model():
     global _gemini_model
     if _gemini_model is None:
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            raise ValueError("GEMINI_API_KEY is required environment variable.")
+            raise ValueError("GEMINI_API_KEY is required.")
         genai.configure(api_key=api_key)
         _gemini_model = genai.GenerativeModel('gemini-1.5-flash')
     return _gemini_model
 
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "password")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "password")
 
 @app.route('/api/health')
 def health():
-    return jsonify({"status": "AMS Online", "region": "Rwanda"})
+    return jsonify({"status": "AMS Online", "region": "Rwanda", "version": "1.2.0"})
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -66,6 +69,7 @@ def monitor():
     try:
         supabase = get_supabase()
         model = get_gemini_model()
+        
         # 1. Fetch all farmers
         farmers = supabase.table("farmers").select("*").execute().data
         results = []
@@ -84,37 +88,26 @@ def monitor():
                 .execute().data
             
             last_record = history[0] if history else None
-            trend_analysis = ""
             alert = None
             
-            # 4. AI Trend Analysis & Predictive Logic
+            # 4. Proactive Alerts Logic (STRICTLY KINYARWANDA)
             if last_record:
-                ndvi_diff = current_ndvi - last_record['ndvi_score']
-                moisture_diff = current_moisture - last_record['moisture_level']
-                
-                # Proactive Alert Logic (Kinyarwanda)
-                if (last_record['ndvi_score'] - current_ndvi) / last_record['ndvi_score'] > 0.15:
-                    alert = f"AMS Alert: UPL {farmer['upl']} NDVI yagabanutse cyane. Genzura indwara cyangwa udukoko uyu munsi."
-                
-                if current_moisture < 30:
-                    alert = f"AMS Alert: Ubutaka bwawe (UPL: {farmer['upl']}) bukashye cyane ({current_moisture}%). Tegura kuhira vuba."
+                ndvi_drop = (last_record['ndvi_score'] - current_ndvi) / last_record['ndvi_score']
+                if ndvi_drop > 0.15:
+                    alert = f"AMS Alert: Ubutaka bwawe (UPL: {farmer['upl']}) NDVI yagabanutse cyane (>15%). Genzura indwara cyangwa udukoko uyu munsi kugira ngo {farmer['crop_type']} itangirika."
+            
+            if current_moisture < 30:
+                alert = f"AMS Alert: Ubutaka bwawe (UPL: {farmer['upl']}) bukashye cyane ({current_moisture}%). Tegura kuhira uyu munsi kugira ngo {farmer['crop_type']} itangirika."
 
-                prompt = f"""
-                You are a Wise Agronomist in Rwanda. 
-                Farmer: {farmer['upl']} growing {farmer['crop_type']}.
-                Current Stats: NDVI={current_ndvi:.2f}, Moisture={current_moisture}%.
-                Previous Stats: NDVI={last_record['ndvi_score']:.2f}, Moisture={last_record['moisture_level']}%.
-                Analyze the trend and provide actionable advice in KINYARWANDA. 
-                Be specific (e.g., 'Irrigate tomorrow' or 'Check north corner').
-                Include this link: https://ams.rw/map/{farmer['upl']}
-                """
-            else:
-                prompt = f"""
-                First reading for Farmer {farmer['upl']} ({farmer['crop_type']}).
-                Stats: NDVI={current_ndvi:.2f}, Moisture={current_moisture}%.
-                Provide initial advice in KINYARWANDA as a Wise Agronomist.
-                Include link: https://ams.rw/map/{farmer['upl']}
-                """
+            # AI Advice (Wise Agronomist in Kinyarwanda)
+            prompt = f"""
+            You are a Wise Agronomist in Rwanda. 
+            Farmer: {farmer['upl']} growing {farmer['crop_type']}.
+            Current Stats: NDVI={current_ndvi:.2f}, Moisture={current_moisture}%.
+            Analyze the trend and provide actionable advice STRICTLY in KINYARWANDA. 
+            Be specific and encouraging.
+            Include this placeholder link for satellite view: https://ams.rw/map/{farmer['upl']}
+            """
             
             ai_response = model.generate_content(prompt).text
             
@@ -138,8 +131,8 @@ def monitor():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/admin')
-def admin():
+@app.route('/api/admin/data')
+def admin_data():
     key = request.args.get('key')
     if key != ADMIN_PASSWORD:
         return jsonify({"error": "Unauthorized Access"}), 403

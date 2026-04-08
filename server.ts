@@ -21,9 +21,10 @@ let supabaseClient: any = null;
 function getSupabase() {
   if (!supabaseClient) {
     const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
+    // Use SERVICE_KEY to bypass RLS for AMS logic
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error("SUPABASE_URL and SUPABASE_SERVICE_KEY/ANON_KEY are required environment variables.");
+      throw new Error("SUPABASE_URL and SUPABASE_SERVICE_KEY are required environment variables.");
     }
     supabaseClient = createClient(supabaseUrl, supabaseKey);
   }
@@ -101,7 +102,7 @@ app.get("/api/monitor", async (req, res) => {
       if (lastRecord) {
         const ndviDrop = (lastRecord.ndvi_score - currentNdvi) / lastRecord.ndvi_score;
         if (ndviDrop > 0.15) {
-          alert = `AMS Alert: UPL ${farmer.upl} NDVI yagabanutse cyane (>15%). Genzura indwara cyangwa udukoko uyu munsi.`;
+          alert = `AMS Alert: Ubutaka bwawe (UPL: ${farmer.upl}) NDVI yagabanutse cyane (>15%). Genzura indwara cyangwa udukoko uyu munsi kugira ngo ${farmer.crop_type} itangirika.`;
         }
         if (currentMoisture < 30) {
           alert = `AMS Alert: Ubutaka bwawe (UPL: ${farmer.upl}) bukashye cyane (${currentMoisture}%). Tegura kuhira uyu munsi kugira ngo ${farmer.crop_type} itangirika.`;
@@ -110,14 +111,13 @@ app.get("/api/monitor", async (req, res) => {
         prompt = `You are a Wise Agronomist in Rwanda. 
         Farmer: ${farmer.upl} growing ${farmer.crop_type}.
         Current Stats: NDVI=${currentNdvi.toFixed(2)}, Moisture=${currentMoisture}%.
-        Previous Stats: NDVI=${lastRecord.ndvi_score.toFixed(2)}, Moisture=${lastRecord.moisture_level}%.
-        Analyze the trend and provide actionable advice in KINYARWANDA. 
-        Be specific (e.g., 'Irrigate tomorrow' or 'Check north corner').
-        Include this link: https://ams.rw/map/${farmer.upl}`;
+        Analyze the trend and provide actionable advice STRICTLY in KINYARWANDA. 
+        Be specific and encouraging.
+        Include this placeholder link for satellite view: https://ams.rw/map/${farmer.upl}`;
       } else {
         prompt = `First reading for Farmer ${farmer.upl} (${farmer.crop_type}).
         Stats: NDVI=${currentNdvi.toFixed(2)}, Moisture=${currentMoisture}%.
-        Provide initial advice in KINYARWANDA as a Wise Agronomist.
+        Provide initial advice STRICTLY in KINYARWANDA as a Wise Agronomist.
         Include link: https://ams.rw/map/${farmer.upl}`;
       }
 
