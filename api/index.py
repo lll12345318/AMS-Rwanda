@@ -96,18 +96,28 @@ def monitor():
                 if ndvi_drop > 0.15:
                     alert = f"AMS Alert: Ubutaka bwawe (UPL: {farmer['upl']}) NDVI yagabanutse cyane (>15%). Genzura indwara cyangwa udukoko uyu munsi kugira ngo {farmer['crop_type']} itangirika."
             
-            if current_moisture < 30:
+            if current_moisture < 30 and alert is None:
                 alert = f"AMS Alert: Ubutaka bwawe (UPL: {farmer['upl']}) bukashye cyane ({current_moisture}%). Tegura kuhira uyu munsi kugira ngo {farmer['crop_type']} itangirika."
 
             # AI Advice (Wise Agronomist in Kinyarwanda)
-            prompt = f"""
-            You are a Wise Agronomist in Rwanda. 
-            Farmer: {farmer['upl']} growing {farmer['crop_type']}.
-            Current Stats: NDVI={current_ndvi:.2f}, Moisture={current_moisture}%.
-            Analyze the trend and provide actionable advice STRICTLY in KINYARWANDA. 
-            Be specific and encouraging.
-            Include this placeholder link for satellite view: https://ams.rw/map/{farmer['upl']}
-            """
+            if last_record:
+                prompt = f"""
+                You are a Wise Agronomist in Rwanda. 
+                Farmer: {farmer['upl']} growing {farmer['crop_type']}.
+                Current Stats: NDVI={current_ndvi:.2f}, Moisture={current_moisture}%. 
+                Previous Stats: NDVI={last_record['ndvi_score']:.2f}, Moisture={last_record['moisture_level']}%. 
+                Analyze the trend and provide actionable advice STRICTLY in KINYARWANDA. 
+                Be specific and encouraging.
+                Include this placeholder link for satellite view: https://ams.rw/map/{farmer['upl']}
+                """
+            else:
+                prompt = f"""
+                You are a Wise Agronomist in Rwanda. 
+                First reading for Farmer {farmer['upl']} ({farmer['crop_type']}).
+                Stats: NDVI={current_ndvi:.2f}, Moisture={current_moisture}%. 
+                Provide initial advice STRICTLY in KINYARWANDA.
+                Include this link: https://ams.rw/map/{farmer['upl']}
+                """
             
             ai_response = model.generate_content(prompt).text
             
