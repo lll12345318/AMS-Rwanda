@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import os
 import google.generativeai as genai
 from supabase import create_client, Client
@@ -8,7 +8,8 @@ from datetime import datetime
 
 load_dotenv()
 
-app = Flask(__name__)
+# Set static and template folders to ../dist for Render/Production
+app = Flask(__name__, static_folder='../dist', template_folder='../dist')
 
 # Lazy Initialization for Supabase (Production Fix)
 _supabase_client = None
@@ -38,9 +39,30 @@ def get_gemini_model():
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "password")
 
+# Serve Frontend
+@app.route('/')
+def serve_index():
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
+
 @app.route('/api/health')
 def health():
-    return jsonify({"status": "AMS Online", "region": "Rwanda", "version": "1.2.0"})
+    return jsonify({"status": "AMS Online", "region": "Rwanda", "version": "1.2.1"})
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Return JSON instead of HTML for HTTP errors."""
+    # Check if it's a database connection error
+    if "SUPABASE_URL" in str(e) or "SUPABASE_SERVICE_KEY" in str(e):
+        return jsonify({"error": "Database connection configuration missing.", "details": str(e)}), 500
+    
+    return jsonify({"error": "An internal server error occurred.", "details": str(e)}), 500
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -96,28 +118,18 @@ def monitor():
                 if ndvi_drop > 0.15:
                     alert = f"AMS Alert: Ubutaka bwawe (UPL: {farmer['upl']}) NDVI yagabanutse cyane (>15%). Genzura indwara cyangwa udukoko uyu munsi kugira ngo {farmer['crop_type']} itangirika."
             
-            if current_moisture < 30 and alert is None:
+            if current_moisture < 30:
                 alert = f"AMS Alert: Ubutaka bwawe (UPL: {farmer['upl']}) bukashye cyane ({current_moisture}%). Tegura kuhira uyu munsi kugira ngo {farmer['crop_type']} itangirika."
 
             # AI Advice (Wise Agronomist in Kinyarwanda)
-            if last_record:
-                prompt = f"""
-                You are a Wise Agronomist in Rwanda. 
-                Farmer: {farmer['upl']} growing {farmer['crop_type']}.
-                Current Stats: NDVI={current_ndvi:.2f}, Moisture={current_moisture}%. 
-                Previous Stats: NDVI={last_record['ndvi_score']:.2f}, Moisture={last_record['moisture_level']}%. 
-                Analyze the trend and provide actionable advice STRICTLY in KINYARWANDA. 
-                Be specific and encouraging.
-                Include this placeholder link for satellite view: https://ams.rw/map/{farmer['upl']}
-                """
-            else:
-                prompt = f"""
-                You are a Wise Agronomist in Rwanda. 
-                First reading for Farmer {farmer['upl']} ({farmer['crop_type']}).
-                Stats: NDVI={current_ndvi:.2f}, Moisture={current_moisture}%. 
-                Provide initial advice STRICTLY in KINYARWANDA.
-                Include this link: https://ams.rw/map/{farmer['upl']}
-                """
+            prompt = f"""
+            You are a Wise Agronomist in Rwanda. 
+            Farmer: {farmer['upl']} growing {farmer['crop_type']}.
+            Current Stats: NDVI={current_ndvi:.2f}, Moisture={current_moisture}%.
+            Analyze the trend and provide actionable advice STRICTLY in KINYARWANDA. 
+            Be specific and encouraging.
+            Include this placeholder link for satellite view: https://ams.rw/map/{farmer['upl']}
+            """
             
             ai_response = model.generate_content(prompt).text
             
