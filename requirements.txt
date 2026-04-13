@@ -2,5 +2,5 @@ flask
 supabase
 google-generativeai
 python-dotenv
-werkzeug==3.1.8
-urllib3==2.6.3
+gunicorn
+werkzeug

@@ -8,8 +8,9 @@ from datetime import datetime
 
 load_dotenv()
 
-# Set static and template folders to ../dist for Render/Production
-app = Flask(__name__, static_folder='../dist', template_folder='../dist')
+# Use absolute paths to locate the dist folder
+dist_path = os.path.join(os.getcwd(), 'dist')
+app = Flask(__name__, static_folder=dist_path, static_url_path='')
 
 # Lazy Initialization for Supabase (Production Fix)
 _supabase_client = None
@@ -39,11 +40,12 @@ def get_gemini_model():
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "password")
 
-# Serve Frontend
+# Root Route: Serve index.html from the dist_path
 @app.route('/')
 def serve_index():
     return send_from_directory(app.static_folder, 'index.html')
 
+# Catch-all Route: Serve any other static files (JS/CSS)
 @app.route('/<path:path>')
 def serve_static(path):
     if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
@@ -53,7 +55,7 @@ def serve_static(path):
 
 @app.route('/api/health')
 def health():
-    return jsonify({"status": "AMS Online", "region": "Rwanda", "version": "1.2.1"})
+    return jsonify({"status": "AMS Online", "region": "Rwanda", "version": "1.2.2"})
 
 @app.errorhandler(Exception)
 def handle_exception(e):
